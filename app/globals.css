@@ -1,0 +1,200 @@
+:root {
+  --bg: #111111;
+  --card: #1b1b1b;
+  --muted: #999999;
+  --text: #ffffff;
+  --line: #2a2a2a;
+  --accent: #ffc800;
+  --danger: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body { min-height: 100vh; }
+
+button, input, textarea, select { font: inherit; }
+
+.container {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 22px 16px 42px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.logo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.logo span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.pill {
+  background: rgba(255, 200, 0, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(255, 200, 0, 0.25);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.card {
+  background: linear-gradient(180deg, #1d1d1d, #171717);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  padding: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  margin-bottom: 16px;
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+}
+
+.field { margin-bottom: 14px; }
+
+label {
+  display: block;
+  margin-bottom: 7px;
+  color: #d7d7d7;
+  font-size: 14px;
+}
+
+input, textarea, select {
+  width: 100%;
+  border: 1px solid #343434;
+  background: #101010;
+  color: var(--text);
+  border-radius: 16px;
+  padding: 15px 14px;
+  outline: none;
+  font-size: 18px;
+}
+
+textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+}
+
+.primary, .secondary, .danger {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  border-radius: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primary {
+  color: #111111;
+  background: var(--accent);
+}
+
+.secondary {
+  color: var(--text);
+  background: #2a2a2a;
+}
+
+.danger {
+  color: #111111;
+  background: var(--danger);
+}
+
+.buttonRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.bigNumber {
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: -0.06em;
+  margin: 6px 0 2px;
+}
+
+.tripList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tripItem {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #141414;
+}
+
+.tripTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tripTitle {
+  font-weight: 800;
+}
+
+.tripKm {
+  color: var(--accent);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.footerText {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 12px;
+}
+
+.notice {
+  border: 1px solid rgba(255, 200, 0, .25);
+  background: rgba(255, 200, 0, .08);
+  color: #ffe88a;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
