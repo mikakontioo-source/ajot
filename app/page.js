@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
-const LOCAL_KEY = 'ajopaivakirja_trips_v1';
+const LOCAL_KEY = 'ajot_trips_v2';
+
+function toDatetimeLocal(value) {
+  const date = value ? new Date(value) : new Date();
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
 
 function formatDate(value) {
   if (!value) return '';
@@ -16,6 +23,25 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function formatShortDate(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('fi-FI', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(new Date(value));
+}
+
+function getTripMonth(trip) {
+  const date = new Date(trip.ended_at || trip.started_at);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 7);
+}
+
+function formatEuro(value) {
+  return new Intl.NumberFormat('fi-FI', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
 function createLocalId() {
   return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -23,12 +49,17 @@ function createLocalId() {
 export default function Home() {
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState('live');
   const [description, setDescription] = useState('');
   const [route, setRoute] = useState('');
   const [tripType, setTripType] = useState('työajo');
   const [startOdo, setStartOdo] = useState('');
   const [endOdo, setEndOdo] = useState('');
+  const [manualStartAt, setManualStartAt] = useState(toDatetimeLocal());
+  const [manualEndAt, setManualEndAt] = useState(toDatetimeLocal());
   const [error, setError] = useState('');
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [reimbursementRate, setReimbursementRate] = useState('');
 
   const activeTrip = trips.find((trip) => trip.status === 'active');
 
@@ -61,6 +92,26 @@ export default function Home() {
     setTrips(nextTrips);
   }
 
+  function resetForm() {
+    setDescription('');
+    setRoute('');
+    setStartOdo('');
+    setEndOdo('');
+    setManualStartAt(toDatetimeLocal());
+    setManualEndAt(toDatetimeLocal());
+  }
+
+  async function insertTrip(newTrip) {
+    if (isSupabaseConfigured) {
+      const { error: dbError } = await supabase.from('trips').insert(newTrip);
+      if (dbError) return setError(dbError.message);
+      await loadTrips();
+    } else {
+      saveLocal([{ ...newTrip, id: createLocalId(), created_at: new Date().toISOString() }, ...trips]);
+    }
+    resetForm();
+  }
+
   async function startTrip(event) {
     event.preventDefault();
     setError('');
@@ -70,26 +121,42 @@ export default function Home() {
     if (!Number.isInteger(odo) || odo <= 0) return setError('Syötä lähtökilometrit numerona.');
     if (activeTrip) return setError('Päätä nykyinen ajo ennen uuden aloittamista.');
 
-    const newTrip = {
+    await insertTrip({
       description: description.trim(),
       route: route.trim(),
       trip_type: tripType,
       start_odometer: odo,
       status: 'active',
       started_at: new Date().toISOString()
-    };
+    });
+  }
 
-    if (isSupabaseConfigured) {
-      const { error: dbError } = await supabase.from('trips').insert(newTrip);
-      if (dbError) return setError(dbError.message);
-      await loadTrips();
-    } else {
-      saveLocal([{ ...newTrip, id: createLocalId(), created_at: new Date().toISOString() }, ...trips]);
-    }
+  async function addManualTrip(event) {
+    event.preventDefault();
+    setError('');
 
-    setDescription('');
-    setRoute('');
-    setStartOdo('');
+    const start = Number(startOdo);
+    const end = Number(endOdo);
+    const startedAt = new Date(manualStartAt);
+    const endedAt = new Date(manualEndAt);
+
+    if (!description.trim()) return setError('Lisää ajon selitys.');
+    if (!Number.isInteger(start) || start <= 0) return setError('Syötä alkukilometrit numerona.');
+    if (!Number.isInteger(end) || end <= start) return setError('Loppukilometrien pitää olla suuremmat kuin alkukilometrit.');
+    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) return setError('Tarkista päivämäärät.');
+    if (endedAt < startedAt) return setError('Loppupäivämäärä ei voi olla ennen alkupäivämäärää.');
+
+    await insertTrip({
+      description: description.trim(),
+      route: route.trim(),
+      trip_type: tripType,
+      start_odometer: start,
+      end_odometer: end,
+      distance: end - start,
+      status: 'done',
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString()
+    });
   }
 
   async function finishTrip(event) {
@@ -148,12 +215,118 @@ export default function Home() {
       .reduce((sum, trip) => sum + Number(trip.distance || 0), 0);
   }, [doneTrips]);
 
+  const monthlyReportTrips = useMemo(() => {
+    return doneTrips
+      .filter((trip) => getTripMonth(trip) === reportMonth)
+      .sort((a, b) => new Date(a.started_at) - new Date(b.started_at));
+  }, [doneTrips, reportMonth]);
+
+  const reportKm = useMemo(() => {
+    return monthlyReportTrips.reduce((sum, trip) => sum + Number(trip.distance || 0), 0);
+  }, [monthlyReportTrips]);
+
+  const workKm = useMemo(() => {
+    return monthlyReportTrips
+      .filter((trip) => trip.trip_type === 'työajo')
+      .reduce((sum, trip) => sum + Number(trip.distance || 0), 0);
+  }, [monthlyReportTrips]);
+
+  async function generatePdfReport() {
+    setError('');
+
+    if (monthlyReportTrips.length === 0) {
+      return setError('Valitulla kuukaudella ei ole tallennettuja ajoja.');
+    }
+
+    const rate = Number(String(reimbursementRate).replace(',', '.')) || 0;
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+    const monthLabel = new Intl.DateTimeFormat('fi-FI', {
+      month: 'long',
+      year: 'numeric'
+    }).format(new Date(`${reportMonth}-01T12:00:00`));
+
+    let y = 18;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text('AJOT', 14, y);
+
+    y += 9;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.text(`Ajopäiväkirja ${monthLabel}`, 14, y);
+
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Kilometrit yhteensä: ${reportKm} km`, 14, y);
+    y += 6;
+    doc.text(`Työajot: ${workKm} km`, 14, y);
+    y += 6;
+    doc.text(`Ajoja: ${monthlyReportTrips.length} kpl`, 14, y);
+
+    if (rate > 0) {
+      y += 6;
+      doc.text(`Korvaus: ${formatEuro(workKm * rate)} (${rate.toFixed(2).replace('.', ',')} €/km)`, 14, y);
+    }
+
+    y += 12;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Pvm', 14, y);
+    doc.text('Reitti / selitys', 34, y);
+    doc.text('Alku', 125, y);
+    doc.text('Loppu', 145, y);
+    doc.text('Km', 168, y);
+    doc.text('Tyyppi', 181, y);
+    y += 3;
+    doc.line(14, y, 196, y);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    monthlyReportTrips.forEach((trip) => {
+      if (y > 280) {
+        doc.addPage();
+        y = 18;
+      }
+
+      const routeText = trip.route ? `${trip.route} - ${trip.description}` : trip.description;
+      const wrappedRoute = doc.splitTextToSize(routeText, 86);
+      const rowHeight = Math.max(8, wrappedRoute.length * 4 + 2);
+
+      doc.text(formatShortDate(trip.started_at), 14, y);
+      doc.text(wrappedRoute, 34, y);
+      doc.text(String(trip.start_odometer || ''), 125, y);
+      doc.text(String(trip.end_odometer || ''), 145, y);
+      doc.text(String(trip.distance || 0), 168, y);
+      doc.text(String(trip.trip_type || ''), 181, y);
+      y += rowHeight;
+    });
+
+    y += 4;
+    if (y > 270) {
+      doc.addPage();
+      y = 18;
+    }
+    doc.line(14, y, 196, y);
+    y += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Yhteensä ${reportKm} km`, 14, y);
+    if (rate > 0) {
+      y += 6;
+      doc.text(`Työajojen kulukorvaus ${formatEuro(workKm * rate)}`, 14, y);
+    }
+
+    doc.save(`ajot-${reportMonth}.pdf`);
+  }
+
+
   return (
     <main className="container">
       <header className="header">
         <div className="logo">
-          <h1>Ajopäiväkirja</h1>
-          <span>Oma kevyt kilometrikirjaus</span>
+          <h1>Ajot</h1>
+          <span>Kevyt ajopäiväkirja kännykkään</span>
         </div>
         <div className="pill">{activeTrip ? 'Ajo käynnissä' : 'Valmis'}</div>
       </header>
@@ -204,10 +377,35 @@ export default function Home() {
         </section>
       ) : (
         <section className="card">
-          <h2>Aloita ajo</h2>
-          <form onSubmit={startTrip}>
+          <div className="tabs">
+            <button className={mode === 'live' ? 'tab active' : 'tab'} type="button" onClick={() => setMode('live')}>Aloita nyt</button>
+            <button className={mode === 'manual' ? 'tab active' : 'tab'} type="button" onClick={() => setMode('manual')}>Lisää jälkikäteen</button>
+          </div>
+
+          <h2>{mode === 'live' ? 'Aloita ajo' : 'Lisää ajo jälkikäteen'}</h2>
+          <form onSubmit={mode === 'live' ? startTrip : addManualTrip}>
+            {mode === 'manual' && (
+              <>
+                <div className="field">
+                  <label>Alkupäivä ja aika</label>
+                  <input
+                    type="datetime-local"
+                    value={manualStartAt}
+                    onChange={(event) => setManualStartAt(event.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Loppupäivä ja aika</label>
+                  <input
+                    type="datetime-local"
+                    value={manualEndAt}
+                    onChange={(event) => setManualEndAt(event.target.value)}
+                  />
+                </div>
+              </>
+            )}
             <div className="field">
-              <label>Lähtömittarilukema</label>
+              <label>{mode === 'live' ? 'Lähtömittarilukema' : 'Alkukilometrit'}</label>
               <input
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -216,6 +414,24 @@ export default function Home() {
                 placeholder="esim. 182450"
               />
             </div>
+            {mode === 'manual' && (
+              <div className="field">
+                <label>Loppukilometrit</label>
+                <input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={endOdo}
+                  onChange={(event) => setEndOdo(event.target.value)}
+                  placeholder="esim. 182518"
+                />
+              </div>
+            )}
+            {mode === 'manual' && Number(endOdo) > Number(startOdo) && (
+              <>
+                <div className="meta">Ajetut kilometrit</div>
+                <div className="bigNumber">{Number(endOdo) - Number(startOdo)} km</div>
+              </>
+            )}
             <div className="field">
               <label>Ajon selitys</label>
               <textarea
@@ -240,15 +456,63 @@ export default function Home() {
                 <option value="muu">Muu</option>
               </select>
             </div>
-            <button className="primary" type="submit">Aloita ajo</button>
+            <button className="primary" type="submit">{mode === 'live' ? 'Aloita ajo' : 'Tallenna ajo'}</button>
           </form>
         </section>
       )}
 
+      <section className="card dashboardCard">
+        <div className="gauge">
+          <div className="gaugeLabel">Tämän kuun ajot</div>
+          <div className="gaugeNumber">{monthKm}</div>
+          <div className="gaugeUnit">km</div>
+        </div>
+        <div className="statsGrid">
+          <div>
+            <span>Työajot</span>
+            <strong>{doneTrips.filter((trip) => trip.trip_type === 'työajo' && getTripMonth(trip) === new Date().toISOString().slice(0, 7)).reduce((sum, trip) => sum + Number(trip.distance || 0), 0)} km</strong>
+          </div>
+          <div>
+            <span>Ajoja</span>
+            <strong>{doneTrips.filter((trip) => getTripMonth(trip) === new Date().toISOString().slice(0, 7)).length}</strong>
+          </div>
+        </div>
+      </section>
+
       <section className="card">
-        <h2>Tämän kuun ajot</h2>
-        <div className="bigNumber">{monthKm} km</div>
-        <div className="meta">Valmiiksi päätetyt ajot yhteensä</div>
+        <h2>PDF-raportti</h2>
+        <div className="field">
+          <label>Kuukausi</label>
+          <input
+            type="month"
+            value={reportMonth}
+            onChange={(event) => setReportMonth(event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Kulukorvaus €/km, valinnainen</label>
+          <input
+            inputMode="decimal"
+            value={reimbursementRate}
+            onChange={(event) => setReimbursementRate(event.target.value)}
+            placeholder="esim. 0,57"
+          />
+        </div>
+        <div className="reportSummary">
+          <div>
+            <span>Ajot</span>
+            <strong>{monthlyReportTrips.length}</strong>
+          </div>
+          <div>
+            <span>Yhteensä</span>
+            <strong>{reportKm} km</strong>
+          </div>
+          <div>
+            <span>Työajot</span>
+            <strong>{workKm} km</strong>
+          </div>
+        </div>
+        <button className="primary" type="button" onClick={generatePdfReport}>Luo PDF</button>
       </section>
 
       <section className="card">

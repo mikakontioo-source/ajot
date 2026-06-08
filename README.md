@@ -1,12 +1,14 @@
-# Ajopäiväkirja
+# Ajot
 
 Yksinkertainen mobiili-first ajopäiväkirja omaan käyttöön.
 
 ## Toiminnot
 
 - Aloita ajo lähtömittarilukemalla
-- Lisää ajon selitys, reitti ja tyyppi
 - Päätä ajo loppumittarilukemalla
+- Lisää ajoja jälkikäteen alku- ja loppupäivämäärällä
+- Lisää alku- ja loppukilometrit jälkikäteen
+- Lisää ajon selitys, reitti ja tyyppi
 - Kilometrit lasketaan automaattisesti
 - Historia ja kuluvan kuukauden kilometrit
 - Supabase-tietokanta, mutta toimii ilman sitä localStoragessa testikäyttöön

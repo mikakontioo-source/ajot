@@ -1,6 +1,6 @@
 {
-  "name": "Ajopäiväkirja",
-  "short_name": "Ajopäiväkirja",
+  "name": "Ajot",
+  "short_name": "Ajot",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",
